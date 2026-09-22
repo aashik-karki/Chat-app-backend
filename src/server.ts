@@ -3,6 +3,7 @@ import { createAdapter } from '@socket.io/redis-adapter';
 import Redis from 'ioredis';
 import { Server as SocketIOServer } from 'socket.io';
 import { createApp } from './app.js';
+import { connectDatabase, disconnectDatabase } from './config/database.js';
 import { env } from './config/env.js';
 import { logger } from './lib/logger.js';
 
@@ -46,6 +47,7 @@ io.on('connection', (socket) => {
 });
 
 const start = async () => {
+  await connectDatabase();
   const redisClients = await configureSocketAdapter();
   httpServer.listen(env.PORT, () => logger.info({ port: env.PORT }, 'Chat backend started'));
 
@@ -54,6 +56,7 @@ const start = async () => {
     io.close();
     httpServer.close(() => logger.info('HTTP server closed'));
     redisClients.forEach((client) => client.disconnect());
+    await disconnectDatabase();
   };
 
   process.once('SIGINT', () => void shutdown('SIGINT'));

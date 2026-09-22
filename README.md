@@ -9,6 +9,7 @@ Requirements: Node.js 22+, MongoDB, and Redis.
 ```bash
 cp .env.example .env
 # Set SESSION_SECRET to at least 32 random characters.
+# For Atlas, set MONGODB_URI to your mongodb+srv connection string.
 npm run dev
 ```
 

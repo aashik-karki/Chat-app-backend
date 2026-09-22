@@ -6,6 +6,7 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(4000),
   CLIENT_ORIGIN: z.string().url().default('http://localhost:3000'),
   MONGODB_URI: z.string().min(1),
+  MONGODB_DB_NAME: z.string().min(1).default('chat_backend'),
   REDIS_URL: z.string().min(1),
   SESSION_SECRET: z.string().min(32),
   ALLOW_INFRA_FAILURE: z.coerce.boolean().default(false),
