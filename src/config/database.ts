@@ -2,16 +2,18 @@ import mongoose from 'mongoose';
 import { env } from './env.js';
 import { logger } from '../lib/logger.js';
 
-export const connectDatabase = async (): Promise<void> => {
+export const connectDatabase = async (): Promise<boolean> => {
   try {
     await mongoose.connect(env.MONGODB_URI, {
       dbName: env.MONGODB_DB_NAME,
       serverSelectionTimeoutMS: 5_000,
     });
     logger.info({ database: env.MONGODB_DB_NAME }, 'MongoDB connected');
+    return true;
   } catch (error) {
     if (!env.ALLOW_INFRA_FAILURE) throw error;
     logger.warn({ error }, 'MongoDB unavailable; continuing without database access');
+    return false;
   }
 };
 

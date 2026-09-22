@@ -26,6 +26,25 @@ For local startup without MongoDB or Redis, keep `ALLOW_INFRA_FAILURE=true`. Pro
 | `npm start` | Run the compiled server |
 | `npm test` | Run tests |
 | `npm run lint` | Run ESLint |
+| `npm run seed:admin` | Create the initial administrator from environment variables |
+
+## Authentication setup
+
+Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` in your untracked `.env`, then run `npm run seed:admin` once. The command is idempotent: it creates an approved `admin` only if that email does not already exist.
+
+Public users register through `POST /api/v1/auth/register` and remain `pending` until an admin approves them. Obtain a CSRF token from `GET /api/v1/auth/csrf-token`, then send it in the `X-CSRF-Token` header for registration, login, logout, and approval requests. All cookie-authenticated requests must include credentials.
+
+Available endpoints:
+
+| Method | Path | Access |
+| --- | --- | --- |
+| `GET` | `/api/v1/auth/csrf-token` | Public |
+| `POST` | `/api/v1/auth/register` | Public |
+| `POST` | `/api/v1/auth/login` | Approved account |
+| `POST` | `/api/v1/auth/logout` | Authenticated account |
+| `GET` | `/api/v1/auth/me` | Authenticated account |
+| `GET` | `/api/v1/admin/users?status=pending` | Admin |
+| `PATCH` | `/api/v1/admin/users/:userId/approval` | Admin |
 
 ## Architecture
 

@@ -5,16 +5,10 @@ import { Server as SocketIOServer } from 'socket.io';
 import { createApp } from './app.js';
 import { connectDatabase, disconnectDatabase } from './config/database.js';
 import { env } from './config/env.js';
+import { createSessionManager } from './config/session.js';
 import { logger } from './lib/logger.js';
 
-const app = createApp();
-const httpServer = http.createServer(app);
-const io = new SocketIOServer(httpServer, {
-  cors: { origin: env.CLIENT_ORIGIN, credentials: true },
-  connectionStateRecovery: { maxDisconnectionDuration: 2 * 60 * 1000 },
-});
-
-const configureSocketAdapter = async () => {
+const configureSocketAdapter = async (io: SocketIOServer) => {
   const pubClient = new Redis(env.REDIS_URL, {
     lazyConnect: true,
     maxRetriesPerRequest: null,
@@ -40,15 +34,23 @@ const configureSocketAdapter = async () => {
   }
 };
 
-io.on('connection', (socket) => {
-  logger.info({ socketId: socket.id }, 'Socket connected');
-  socket.on('disconnect', (reason) => logger.info({ socketId: socket.id, reason }, 'Socket disconnected'));
-  socket.on('error', (error) => logger.error({ socketId: socket.id, error }, 'Socket error'));
-});
-
 const start = async () => {
   await connectDatabase();
-  const redisClients = await configureSocketAdapter();
+  const sessionManager = await createSessionManager();
+  const app = createApp(sessionManager.middleware);
+  const httpServer = http.createServer(app);
+  const io = new SocketIOServer(httpServer, {
+    cors: { origin: env.CORS_ALLOW_ALL ? true : env.CLIENT_ORIGIN, credentials: true },
+    connectionStateRecovery: { maxDisconnectionDuration: 2 * 60 * 1000 },
+  });
+  const redisClients = await configureSocketAdapter(io);
+
+  io.on('connection', (socket) => {
+    logger.info({ socketId: socket.id }, 'Socket connected');
+    socket.on('disconnect', (reason) => logger.info({ socketId: socket.id, reason }, 'Socket disconnected'));
+    socket.on('error', (error) => logger.error({ socketId: socket.id, error }, 'Socket error'));
+  });
+
   httpServer.listen(env.PORT, () => logger.info({ port: env.PORT }, 'Chat backend started'));
 
   const shutdown = async (signal: string) => {
@@ -56,6 +58,7 @@ const start = async () => {
     io.close();
     httpServer.close(() => logger.info('HTTP server closed'));
     redisClients.forEach((client) => client.disconnect());
+    await sessionManager.disconnect();
     await disconnectDatabase();
   };
 
