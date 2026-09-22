@@ -8,7 +8,7 @@ import { requireAuth } from '../middleware/auth.js';
 
 const credentialsSchema = z.object({
   email: z.string().email().max(320).transform((value) => value.trim().toLowerCase()),
-  password: z.string().min(12).max(128),
+  password: z.string().min(8).max(128),
 });
 
 const registrationSchema = credentialsSchema.extend({
@@ -30,8 +30,10 @@ authRouter.post('/register', requireCsrfToken, asyncRoute(async (request, respon
   if (existingUser) throw new HttpError(409, 'EMAIL_IN_USE', 'An account already uses this email address');
 
   const passwordHash = await bcrypt.hash(input.data.password, 12);
-  await User.create({ ...input.data, passwordHash, role: 'user', status: 'pending' });
-  response.status(201).json({ message: 'Registration submitted for admin approval' });
+  const user = await User.create({ ...input.data, passwordHash, role: 'user', status: 'pending' });
+  // Returning the created account (not just a message) lets the client show a
+  // real "pending approval" screen without guessing at the account's shape.
+  response.status(201).json({ user: { id: user.id, name: user.name, email: user.email, role: user.role, status: user.status } });
 }));
 
 authRouter.post('/login', requireCsrfToken, asyncRoute(async (request, response) => {
@@ -46,7 +48,7 @@ authRouter.post('/login', requireCsrfToken, asyncRoute(async (request, response)
   if (user.status === 'rejected') throw new HttpError(403, 'ACCOUNT_REJECTED', 'Your account registration was rejected');
 
   request.session.userId = user.id;
-  response.json({ user: { id: user.id, name: user.name, email: user.email, role: user.role } });
+  response.json({ user: { id: user.id, name: user.name, email: user.email, role: user.role, status: user.status } });
 }));
 
 authRouter.post('/logout', requireCsrfToken, (request, response, next) => {
@@ -59,5 +61,5 @@ authRouter.post('/logout', requireCsrfToken, (request, response, next) => {
 
 authRouter.get('/me', requireAuth, (_request, response) => {
   const user = response.locals.currentUser;
-  response.json({ user: { id: user._id, name: user.name, email: user.email, role: user.role } });
+  response.json({ user: { id: user._id, name: user.name, email: user.email, role: user.role, status: user.status } });
 });

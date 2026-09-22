@@ -25,9 +25,7 @@ describe('message-service', () => {
   });
 
   const makeConversation = async () => {
-    const conversation = await Conversation.create({
-      participants: [new Types.ObjectId(), new Types.ObjectId()],
-    });
+    const conversation = await Conversation.create({ customerId: new Types.ObjectId() });
     return conversation._id.toString();
   };
 

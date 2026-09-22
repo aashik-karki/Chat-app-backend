@@ -105,7 +105,10 @@ export const createMessage = async ({
 }: CreateMessageInput): Promise<SerializedMessage> => {
   try {
     const message = await Message.create({ conversationId, senderId, clientMessageId, text });
-    await Conversation.updateOne({ _id: conversationId }, { $set: { lastMessageAt: message.createdAt } });
+    await Conversation.updateOne(
+      { _id: conversationId },
+      { $set: { lastMessageAt: message.createdAt, lastMessagePreview: text } },
+    );
     return serializeMessage(message.toObject() as LeanMessage);
   } catch (error) {
     if (isDuplicateKeyError(error)) {
