@@ -1,11 +1,12 @@
 import type { Request, Response } from 'express';
 import { getCurrentUser } from '../../../common/auth/current-user.js';
 import { hasPermission } from '../../../common/auth/permissions.js';
-import { getParams } from '../../../common/middleware/validate.pipe.js';
+import { getBody, getParams } from '../../../common/middleware/validate.pipe.js';
 import { logger } from '../../../core/logger.js';
 import { sideOf } from '../chat-side.js';
 import { toConversationResponse, type ConversationResponse } from '../chat.mapper.js';
 import type { ConversationIdParamsDto } from '../dto/conversation-id-params.dto.js';
+import type { UpdateTopicDto } from '../dto/update-topic.dto.js';
 import {
   toConversationRef,
   type ConversationsService,
@@ -66,5 +67,16 @@ export class ConversationsController {
     const ref = refOf(row);
     const unread = await this.messagesService.getUnreadCounts([ref], sideOf(ref, user.id));
     response.json({ conversation: toResponse(row, unread[conversationId] ?? 0) });
+  };
+
+  /** PATCH /conversations/mine/topic — the customer says what they need help with (used for routing). */
+  setTopic = async (_request: Request, response: Response) => {
+    const user = getCurrentUser(response);
+    const conversation = await this.conversationsService.setTopic(user.id, getBody<UpdateTopicDto>(response).topic);
+    const ref = toConversationRef(conversation);
+    const unread = await this.messagesService.getUnreadCounts([ref], 'customer');
+    response.json({
+      conversation: toConversationResponse(conversation, { id: user.id, name: user.name, email: user.email }, unread[ref.id] ?? 0),
+    });
   };
 }

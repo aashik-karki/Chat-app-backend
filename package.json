@@ -10,7 +10,8 @@
     "seed:admin": "tsx src/scripts/seed-admin.ts",
     "test": "vitest run --dir src",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "test:e2e": "tsx test/e2e/run.ts"
   },
   "keywords": [],
   "author": "",
@@ -45,6 +46,7 @@
     "@types/node": "^26.6.2",
     "eslint": "^10.11.0",
     "prettier": "^3.9.8",
+    "socket.io-client": "^4.8.3",
     "tsx": "^4.23.15",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.70.1",

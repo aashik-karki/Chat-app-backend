@@ -36,6 +36,7 @@ export interface ConversationResponse {
   customer: CustomerSummary;
   assignedAgentId: string | null;
   status: LeanConversation['status'];
+  topic: LeanConversation['topic'];
   lastMessagePreview: string | null;
   lastMessageAt: string | null;
   unreadCount: number;
@@ -49,7 +50,9 @@ export const toConversationResponse = (
   id: conversation._id.toString(),
   customer,
   assignedAgentId: conversation.assignedAgentId ? conversation.assignedAgentId.toString() : null,
-  status: conversation.status,
+  // `?? default` keeps threads created before these fields existed working.
+  status: conversation.status ?? 'open',
+  topic: conversation.topic ?? 'general',
   lastMessagePreview: conversation.lastMessagePreview,
   lastMessageAt: conversation.lastMessageAt ? conversation.lastMessageAt.toISOString() : null,
   unreadCount,
