@@ -1,0 +1,65 @@
+import type { LeanConversation } from './models/conversation.types.js';
+import type { LeanMessage, MessageStatus } from './models/message.types.js';
+
+export interface MessageResponse {
+  id: string;
+  clientMessageId: string;
+  conversationId: string;
+  senderId: string;
+  text: string;
+  status: MessageStatus;
+  createdAt: string;
+  deliveredAt: string | null;
+  readAt: string | null;
+}
+
+export const toMessageResponse = (message: LeanMessage): MessageResponse => ({
+  id: message._id.toString(),
+  clientMessageId: message.clientMessageId,
+  conversationId: message.conversationId.toString(),
+  senderId: message.senderId.toString(),
+  text: message.text,
+  status: message.status,
+  createdAt: message.createdAt.toISOString(),
+  deliveredAt: message.deliveredAt ? message.deliveredAt.toISOString() : null,
+  readAt: message.readAt ? message.readAt.toISOString() : null,
+});
+
+export interface CustomerSummary {
+  id: string;
+  name: string;
+  email: string;
+}
+
+export interface ConversationResponse {
+  id: string;
+  customer: CustomerSummary;
+  assignedAgentId: string | null;
+  /** Name of the agent handling this chat (null while waiting in the queue). */
+  assignedAgent: { id: string; name: string } | null;
+  status: LeanConversation['status'];
+  topic: LeanConversation['topic'];
+  lastMessagePreview: string | null;
+  lastMessageAt: string | null;
+  unreadCount: number;
+}
+
+export const toConversationResponse = (
+  conversation: LeanConversation,
+  customer: CustomerSummary,
+  unreadCount: number,
+  agentNames: Record<string, string> = {},
+): ConversationResponse => ({
+  id: conversation._id.toString(),
+  customer,
+  assignedAgentId: conversation.assignedAgentId ? conversation.assignedAgentId.toString() : null,
+  assignedAgent: conversation.assignedAgentId
+    ? { id: conversation.assignedAgentId.toString(), name: agentNames[conversation.assignedAgentId.toString()] ?? 'Support agent' }
+    : null,
+  // `?? default` keeps threads created before these fields existed working.
+  status: conversation.status ?? 'open',
+  topic: conversation.topic ?? 'general',
+  lastMessagePreview: conversation.lastMessagePreview,
+  lastMessageAt: conversation.lastMessageAt ? conversation.lastMessageAt.toISOString() : null,
+  unreadCount,
+});
