@@ -5,7 +5,7 @@ import { HttpError } from './http-error.js';
 
 /** 404 for any /api route nobody handled. Register after all routers. */
 export const notFoundHandler = (request: Request, _response: Response, next: NextFunction) => {
-  next(HttpError.notFound('ROUTE_NOT_FOUND', `Route ${request.method} ${request.path} not found`));
+  next(HttpError.notFound('ROUTE_NOT_FOUND', `Route ${request.method} ${request.originalUrl.split("?")[0]} not found`));
 };
 
 /** Single place that turns any thrown error into the API's JSON error shape. */
