@@ -7,6 +7,8 @@ import { connectDatabase, disconnectDatabase } from './config/database.js';
 import { env } from './config/env.js';
 import { createSessionManager } from './config/session.js';
 import { logger } from './lib/logger.js';
+import { registerChatGateway } from './realtime/chat-gateway.js';
+import { attachSocketAuth } from './realtime/socket-auth.js';
 
 const configureSocketAdapter = async (io: SocketIOServer) => {
   const pubClient = new Redis(env.REDIS_URL, {
@@ -45,11 +47,12 @@ const start = async () => {
   });
   const redisClients = await configureSocketAdapter(io);
 
-  io.on('connection', (socket) => {
-    logger.info({ socketId: socket.id }, 'Socket connected');
-    socket.on('disconnect', (reason) => logger.info({ socketId: socket.id, reason }, 'Socket disconnected'));
-    socket.on('error', (error) => logger.error({ socketId: socket.id, error }, 'Socket error'));
-  });
+  // Shares the same HttpOnly session cookie the REST API uses, so a socket
+  // handshake is authenticated exactly like an HTTP request (see
+  // realtime/socket-auth.ts) — no separate token or login step.
+  io.engine.use(sessionManager.middleware);
+  attachSocketAuth(io);
+  registerChatGateway(io);
 
   httpServer.listen(env.PORT, () => logger.info({ port: env.PORT }, 'Chat backend started'));
 

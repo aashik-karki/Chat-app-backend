@@ -92,6 +92,9 @@ export interface CreateMessageInput {
 
 const DUPLICATE_KEY_ERROR_CODE = 11000;
 
+const isDuplicateKeyError = (error: unknown): boolean =>
+  typeof error === 'object' && error !== null && 'code' in error && (error as { code?: number }).code === DUPLICATE_KEY_ERROR_CODE;
+
 /**
  * Persists a message and bumps the conversation's `lastMessageAt`.
  * Idempotent by (conversationId, clientMessageId): a retried send returns the
@@ -119,5 +122,104 @@ export const createMessage = async ({
   }
 };
 
-const isDuplicateKeyError = (error: unknown): boolean =>
-  typeof error === 'object' && error !== null && 'code' in error && (error as { code?: number }).code === DUPLICATE_KEY_ERROR_CODE;
+/**
+ * Flips a single freshly-sent message straight to "delivered" when the
+ * recipient is already connected to the conversation's socket room at send
+ * time — used by the realtime gateway instead of waiting for a join.
+ */
+export const markMessageDelivered = async (messageId: string): Promise<SerializedMessage | null> => {
+  if (!Types.ObjectId.isValid(messageId)) return null;
+  const message = (await Message.findOneAndUpdate(
+    { _id: messageId, status: 'sent' },
+    { $set: { status: 'delivered', deliveredAt: new Date() } },
+    { new: true },
+  ).lean()) as LeanMessage | null;
+  return message ? serializeMessage(message) : null;
+};
+
+/**
+ * Called when a socket joins a conversation room: anything the other side
+ * sent while this socket was away is now on screen, so it counts as
+ * delivered. Returns the messages that changed, for the gateway to notify
+ * the original sender about.
+ */
+export const markMessagesDeliveredOnJoin = async (
+  conversationId: string,
+  joinerId: string,
+): Promise<SerializedMessage[]> => {
+  const pending = (await Message.find({
+    conversationId,
+    senderId: { $ne: joinerId },
+    status: 'sent',
+  }).lean()) as LeanMessage[];
+  if (pending.length === 0) return [];
+
+  const deliveredAt = new Date();
+  await Message.updateMany(
+    { _id: { $in: pending.map((message) => message._id) } },
+    { $set: { status: 'delivered', deliveredAt } },
+  );
+  return pending.map((message) => serializeMessage({ ...message, status: 'delivered', deliveredAt }));
+};
+
+export interface UnreadCounts {
+  [conversationId: string]: number;
+}
+
+/**
+ * How many messages the other side sent, in each of the given
+ * conversations, that `readerId` hasn't read yet. Used to seed the
+ * conversation list's unread badges on page load (the socket layer keeps
+ * them current after that via message:new / message:status).
+ */
+export const getUnreadCounts = async (conversationIds: string[], readerId: string): Promise<UnreadCounts> => {
+  const validIds = conversationIds.filter((id) => Types.ObjectId.isValid(id));
+  if (validIds.length === 0) return {};
+
+  const rows = await Message.aggregate<{ _id: Types.ObjectId; count: number }>([
+    {
+      $match: {
+        conversationId: { $in: validIds.map((id) => new Types.ObjectId(id)) },
+        senderId: { $ne: new Types.ObjectId(readerId) },
+        status: { $ne: 'read' },
+      },
+    },
+    { $group: { _id: '$conversationId', count: { $sum: 1 } } },
+  ]);
+
+  return Object.fromEntries(rows.map((row) => [row._id.toString(), row.count]));
+};
+
+export interface MarkMessagesReadInput {
+  conversationId: string;
+  readerId: string;
+  throughMessageId: string;
+}
+
+/**
+ * Marks every not-yet-read message from the other side, up through
+ * `throughMessageId`, as read. The gateway only reports the read receipt for
+ * `throughMessageId` back to the sender (chat UIs conventionally show the
+ * receipt on the latest read message, not every one individually).
+ */
+export const markMessagesRead = async ({
+  conversationId,
+  readerId,
+  throughMessageId,
+}: MarkMessagesReadInput): Promise<{ readAt: string } | null> => {
+  if (!Types.ObjectId.isValid(throughMessageId)) return null;
+  const throughMessage = await Message.findOne({ _id: throughMessageId, conversationId }).select('createdAt').lean();
+  if (!throughMessage) return null;
+
+  const readAt = new Date();
+  await Message.updateMany(
+    {
+      conversationId,
+      senderId: { $ne: readerId },
+      status: { $ne: 'read' },
+      createdAt: { $lte: throughMessage.createdAt },
+    },
+    { $set: { status: 'read', readAt } },
+  );
+  return { readAt: readAt.toISOString() };
+};

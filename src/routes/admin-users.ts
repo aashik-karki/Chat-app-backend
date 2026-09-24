@@ -36,6 +36,44 @@ adminUsersRouter.get('/', async (request, response, next) => {
   }
 });
 
+// Dashboard summary: how many regular-user accounts exist by status, plus
+// the accounts themselves (name, email, status, joined date) so the admin
+// dashboard can render both the stat tiles and a full user table from one
+// request. Admin accounts aren't counted here — this is about the pool of
+// customers waiting on/using support, not the staff running it.
+adminUsersRouter.get('/summary', async (_request, response, next) => {
+  try {
+    const [total, pending, approved, rejected, users] = await Promise.all([
+      User.countDocuments({ role: 'user' }),
+      User.countDocuments({ role: 'user', status: 'pending' }),
+      User.countDocuments({ role: 'user', status: 'approved' }),
+      User.countDocuments({ role: 'user', status: 'rejected' }),
+      User.find({ role: 'user' })
+        .select('name email role status createdAt')
+        .sort({ createdAt: -1 })
+        .limit(200)
+        .lean(),
+    ]);
+
+    response.json({
+      total,
+      pending,
+      approved,
+      rejected,
+      users: users.map((user) => ({
+        id: user._id.toString(),
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        status: user.status,
+        createdAt: user.createdAt.toISOString(),
+      })),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 adminUsersRouter.patch('/:userId/approval', requireCsrfToken, async (request, response, next) => {
   try {
     const body = z.object({ status: z.enum(['approved', 'rejected']) }).safeParse(request.body);

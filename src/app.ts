@@ -7,6 +7,7 @@ import { HttpError } from './lib/http-error.js';
 import { logger } from './lib/logger.js';
 import { adminUsersRouter } from './routes/admin-users.js';
 import { authRouter } from './routes/auth.js';
+import { conversationsRouter } from './routes/conversations.js';
 import { messagesRouter } from './routes/messages.js';
 
 export const createApp = (sessionMiddleware: RequestHandler) => {
@@ -23,6 +24,7 @@ export const createApp = (sessionMiddleware: RequestHandler) => {
 
   app.use('/api/v1/auth', authRouter);
   app.use('/api/v1/admin/users', adminUsersRouter);
+  app.use('/api/v1/conversations', conversationsRouter);
   app.use('/api/v1/conversations/:conversationId/messages', messagesRouter);
 
   app.use((error: unknown, _request: express.Request, response: express.Response, next: express.NextFunction) => {
