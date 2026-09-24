@@ -1,5 +1,6 @@
 import { Types } from 'mongoose';
 import { HttpError } from '../../../common/errors/http-error.js';
+import { isOnlyDuplicateKeyErrors } from '../../../common/utils/mongo-errors.js';
 import { logger } from '../../../core/logger.js';
 import { rooms } from '../../../realtime/rooms.js';
 import type { AppServer } from '../../../realtime/socket.types.js';
@@ -158,7 +159,11 @@ export class AgentsService {
           },
         })),
         { ordered: false },
-      );
+      ).catch((error: unknown) => {
+        // Two requests creating the same new profile at once: one insert wins, the
+        // other gets a duplicate-key error. The profile exists either way, so that's fine.
+        if (!isOnlyDuplicateKeyErrors(error)) throw error;
+      });
     }
     const profiles = await AgentProfile.find({ userId: { $in: agentIds } }).lean<Partial<LeanAgentProfile>[]>();
     return new Map(profiles.map((profile) => [profile.userId!.toString(), normalizeProfile(profile)]));

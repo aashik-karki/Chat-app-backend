@@ -1,71 +1,61 @@
-# Chat Backend
+# Support Chat Backend
 
-Scalable Node.js, Express, TypeScript, Socket.IO, MongoDB, and Redis backend for a real-time support chat application.
+Real-time customer-support chat: Node.js, Express 5, TypeScript, Socket.IO, MongoDB, Redis, BullMQ.
+Structured like a NestJS app (modules → routes → controllers → services → models), without the framework.
 
 ## Quick start
 
-Requirements: Node.js 22+, MongoDB, and Redis.
+Requirements: Node.js 22+, MongoDB, Redis.
 
 ```bash
-cp .env.example .env
-# Set SESSION_SECRET to at least 32 random characters.
-# For Atlas, set MONGODB_URI to your mongodb+srv connection string.
-npm run dev
+cp .env.example .env          # set SESSION_SECRET (32+ chars)
+npm install
+npm run push:vapid            # optional: paste the output into .env to enable Web Push
+npm run seed:admin            # creates the admin from ADMIN_EMAIL / ADMIN_PASSWORD
+npm run dev                   # http://localhost:4000
 ```
 
-The service starts an Express and Socket.IO backend foundation. Add application routes as features are implemented.
-
-For local startup without MongoDB or Redis, keep `ALLOW_INFRA_FAILURE=true`. Production must set it to `false` and provide managed infrastructure.
-
-## Commands
+- API docs (Swagger UI): http://localhost:4000/api/docs · OpenAPI JSON: `/api/docs/openapi.json`
+- Real-time events: [docs/realtime-events.md](docs/realtime-events.md)
+- Health: `/health` (process up) · `/health/ready` (MongoDB + Redis)
 
 | Command | Purpose |
 | --- | --- |
-| `npm run dev` | Run the TypeScript server with watch mode |
-| `npm run build` | Compile to `dist/` |
-| `npm start` | Run the compiled server |
-| `npm test` | Run tests |
-| `npm run lint` | Run ESLint |
-| `npm run seed:admin` | Create the initial administrator from environment variables |
-
-## Authentication setup
-
-Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` in your untracked `.env`, then run `npm run seed:admin` once. The command is idempotent: it creates an approved `admin` only if that email does not already exist.
-
-Public users register through `POST /api/v1/auth/register` and remain `pending` until an admin approves them. Obtain a CSRF token from `GET /api/v1/auth/csrf-token`, then send it in the `X-CSRF-Token` header for registration, login, logout, and approval requests. All cookie-authenticated requests must include credentials.
-
-Available endpoints:
-
-| Method | Path | Access |
-| --- | --- | --- |
-| `GET` | `/api/v1/auth/csrf-token` | Public |
-| `POST` | `/api/v1/auth/register` | Public |
-| `POST` | `/api/v1/auth/login` | Approved account |
-| `POST` | `/api/v1/auth/logout` | Authenticated account |
-| `GET` | `/api/v1/auth/me` | Authenticated account |
-| `GET` | `/api/v1/admin/users?status=pending` | Admin |
-| `PATCH` | `/api/v1/admin/users/:userId/approval` | Admin |
+| `npm run dev` | Run with watch mode |
+| `npm run build` / `npm start` | Compile to `dist/` / run compiled |
+| `npm test` | Unit tests (vitest) |
+| `npm run test:e2e` | End-to-end: 2 real server processes + real MongoDB/Redis (`-- chat`, `-- agents`, `-- push` to run one) |
+| `npm run seed:admin` | Create the first admin |
+| `npm run push:vapid` | Generate VAPID + encryption keys for Web Push |
 
 ## Architecture
 
-- Express owns versioned REST APIs, security middleware, validation, and OpenAPI documentation.
-- Socket.IO owns real-time events and uses the Redis adapter for multi-instance broadcasts.
-- MongoDB is the source of truth for messages, users, agents, assignments, and delivery/read state.
-- Redis is used for cache-aside chat history, presence, distributed coordination, and BullMQ queues.
-- Sessions use secure cookies; authorization is permission-based and does not require JWT.
+```
+src/
+  main.ts                 bootstrap: infra → modules → HTTP → Socket.IO → graceful shutdown
+  app.ts                  Express app: security middleware, docs, /api/v1 routers, errors
+  core/                   config (zod-validated env), logger, MongoDB, Redis, sessions
+  common/                 guards (auth, permission, CSRF), validate pipe, rate limiter, errors
+  realtime/               Socket.IO server, Redis Streams adapter, socket auth, event handler wrapper
+  modules/
+    auth/  users/         login/register/session, admin approval, roles
+    chat/                 conversations, messages, Redis history cache, export, chat gateway
+    presence/             online/offline in Redis (multi-tab, reload grace, crash sweep)
+    agents/               agent status, skill routing, load balancing, queue, assignment
+    push/                 Web Push subscriptions (encrypted) + BullMQ delivery queue
+    metrics/              live metrics (socket + REST), Redis time series, Prometheus
+  docs/openapi.ts         OpenAPI generated from the zod DTOs
+```
 
-## Feature branches
+Each module has `schemas/` (Mongoose), `models/`, `dto/` (zod), `*.service.ts`, `*.controller.ts`, `*.routes.ts`, optional `*.gateway.ts`, and a `*.module.ts` that wires them.
 
-Implement features in this order:
+### Key design decisions
 
-1. `feature/message-model-and-history`
-2. `feature/socket-rooms-and-messaging`
-3. `feature/redis-chat-cache`
-4. `feature/message-delivery-read-status`
-5. `feature/agent-presence-and-routing`
-6. `feature/session-auth-and-rbac`
-7. `feature/push-notifications`
-8. `feature/analytics-and-metrics`
-9. `feature/versioned-api-documentation`
-
-See [docs/features](docs/features/README.md) for the scope and acceptance criteria of each branch.
+- **Auth without JWT:** HttpOnly + SameSite session cookie stored in Redis; session id rotated on login; CSRF token on every unsafe request; the same cookie authenticates sockets.
+- **Authorization:** permission-based (`common/auth/permissions.ts`) — routes ask for a permission, roles map to permissions; add a role by editing one file.
+- **Horizontal scaling:** sessions, presence, rate limits, cache and queues live in Redis; Socket.IO uses the Redis **Streams** adapter (cross-server events + connection-state recovery).
+- **Messages:** idempotent sends (`clientMessageId` unique index), keyset pagination, status only moves forward (`sent → delivered → read`) via atomic conditional updates; read status is per side (customer vs support team).
+- **Cache:** cache-aside for the hot first page of each conversation, invalidated by a per-conversation version counter (no stale-write race).
+- **Agents:** atomic capacity reservation + conditional assignment, so two servers can't double-assign; a 30s rebalance (one server, Redis lock) repairs counters and requeues chats of agents who are gone.
+- **Push:** BullMQ fan-out — one job per device with exponential-backoff retries; 404/410 subscriptions deleted; no push if the recipient is looking at the chat.
+- **Observability:** pino structured logs (errors serialized), `/health/ready`, live metrics, Prometheus endpoint.

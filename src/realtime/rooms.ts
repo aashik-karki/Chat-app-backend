@@ -4,11 +4,13 @@
  *   staff              → every admin/agent socket (auto-joined on connect)
  *   conversation:{id}  → sockets currently viewing one support thread
  *   presence:{id}      → sockets that asked for live presence of that user
+ *   metrics            → admin dashboards subscribed to live metrics
  */
 export const rooms = {
   user: (userId: string) => `user:${userId}`,
   staff: 'staff',
   conversation: (conversationId: string) => `conversation:${conversationId}`,
   presence: (userId: string) => `presence:${userId}`,
+  metrics: 'metrics',
   isConversation: (room: string) => room.startsWith('conversation:'),
 } as const;

@@ -1,8 +1,10 @@
 import cors from 'cors';
 import express, { type RequestHandler, type Router } from 'express';
+import swaggerUi from 'swagger-ui-express';
 import helmet from 'helmet';
 import pinoHttp from 'pino-http';
 import { errorHandler, notFoundHandler } from './common/errors/error-handler.js';
+import { buildOpenApiDocument } from './docs/openapi.js';
 import { env } from './core/config/env.js';
 import { isDatabaseReady } from './core/database/mongo.js';
 import { logger } from './core/logger.js';
@@ -13,6 +15,10 @@ export interface AppRouters {
   users: Router;
   chat: Router;
   agents: Router;
+  push: Router;
+  metrics: Router;
+  /** GET /metrics (Prometheus text format) */
+  prometheus: RequestHandler;
 }
 
 /** Like NestJS's AppModule: global middleware + every module's routes under /api/v1. */
@@ -35,6 +41,15 @@ export const createApp = (sessionMiddleware: RequestHandler, routers: AppRouters
     response.status(checks.mongo ? 200 : 503).json({ status: checks.mongo ? 'ready' : 'not_ready', checks });
   });
 
+  // API docs: Swagger UI + raw OpenAPI JSON (generated from the zod DTOs).
+  const openApiDocument = buildOpenApiDocument();
+  app.get('/api/docs/openapi.json', (_request, response) => {
+    response.json(openApiDocument);
+  });
+  app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(openApiDocument, { customSiteTitle: 'Support Chat API' }));
+
+  app.get('/metrics', routers.prometheus);
+
   app.use(sessionMiddleware);
 
   const api = express.Router();
@@ -42,6 +57,8 @@ export const createApp = (sessionMiddleware: RequestHandler, routers: AppRouters
   api.use('/admin/users', routers.users);
   api.use('/conversations', routers.chat);
   api.use('/agents', routers.agents);
+  api.use('/push', routers.push);
+  api.use('/metrics', routers.metrics);
   app.use('/api/v1', api);
 
   app.use(notFoundHandler);

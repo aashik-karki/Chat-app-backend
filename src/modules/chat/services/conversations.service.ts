@@ -164,4 +164,12 @@ export class ConversationsService {
     for (const row of rows) counts[row._id.toString()] = row.count;
     return counts;
   }
+
+  countQueue(): Promise<number> {
+    return Conversation.countDocuments({ status: 'open', assignedAgentId: null, lastMessageAt: { $ne: null } });
+  }
+
+  countOpen(): Promise<number> {
+    return Conversation.countDocuments({ status: 'open', lastMessageAt: { $ne: null } });
+  }
 }

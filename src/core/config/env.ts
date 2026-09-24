@@ -20,10 +20,20 @@ const envSchema = z.object({
   ADMIN_EMAIL: z.string().email().optional(),
   ADMIN_PASSWORD: z.string().min(12).max(128).optional(),
   ALLOW_INFRA_FAILURE: booleanFromEnv,
+  // Web Push (optional: push is disabled until both keys are set; generate with `npm run push:vapid`)
+  VAPID_PUBLIC_KEY: z.string().min(1).optional(),
+  VAPID_PRIVATE_KEY: z.string().min(1).optional(),
+  VAPID_SUBJECT: z.string().regex(/^(mailto:|https:)/, 'must start with mailto: or https:').default('mailto:admin@example.com'),
+  // 32 random bytes, base64. Encrypts stored push subscriptions. If unset, derived from SESSION_SECRET.
+  PUSH_ENCRYPTION_KEY: z.string().optional(),
+  // Bearer token for the Prometheus endpoint GET /metrics. If unset, that endpoint is off.
+  METRICS_TOKEN: z.string().min(16).optional(),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
 });
 
-const result = envSchema.safeParse(process.env);
+// Treat `KEY=` (empty) in .env as unset, so optional settings can be left blank.
+const cleaned = Object.fromEntries(Object.entries(process.env).filter(([, value]) => value !== ''));
+const result = envSchema.safeParse(cleaned);
 
 if (!result.success) {
   console.error('Invalid environment configuration', z.flattenError(result.error).fieldErrors);

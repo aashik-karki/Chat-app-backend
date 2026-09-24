@@ -8,7 +8,9 @@ import { createSessionManager } from './core/session/session.js';
 import { createAgentsModule } from './modules/agents/agents.module.js';
 import { createAuthModule } from './modules/auth/auth.module.js';
 import { createChatModule } from './modules/chat/chat.module.js';
+import { createMetricsModule } from './modules/metrics/metrics.module.js';
 import { createPresenceModule } from './modules/presence/presence.module.js';
+import { createPushModule } from './modules/push/push.module.js';
 import { createUsersModule } from './modules/users/users.module.js';
 import { createSocketServer, registerGateways } from './realtime/socket.server.js';
 
@@ -28,6 +30,15 @@ const bootstrap = async () => {
     conversationsService: chat.conversationsService,
     presenceService: presence.presenceService,
   });
+  const metrics = createMetricsModule({
+    presenceService: presence.presenceService,
+    agentsService: agents.agentsService,
+    conversationsService: chat.conversationsService,
+  });
+  const push = createPushModule({
+    conversationsService: chat.conversationsService,
+    metricsService: metrics.metricsService,
+  });
 
   // 3. HTTP
   const app = createApp(sessionManager.middleware, {
@@ -35,15 +46,21 @@ const bootstrap = async () => {
     users: users.router,
     chat: chat.router,
     agents: agents.router,
+    push: push.router,
+    metrics: metrics.router,
+    prometheus: metrics.prometheusHandler,
   });
   const httpServer = http.createServer(app);
 
   // 4. Realtime
   const io = await createSocketServer({ httpServer, sessionMiddleware: sessionManager.middleware });
   const chatGateway = chat.createGateway(io);
-  registerGateways(io, [presence.gateway, chatGateway, agents.gateway]);
+  registerGateways(io, [presence.gateway, chatGateway, agents.gateway, metrics.gateway]);
   presence.presenceService.start(io);
   agents.start(io, chatGateway);
+  metrics.metricsService.start(io);
+  chatGateway.onMessageCreated(() => metrics.metricsService.recordMessage());
+  push.start(io, chatGateway);
 
   httpServer.listen(env.PORT, () => logger.info({ port: env.PORT }, 'Chat backend started'));
 
@@ -57,6 +74,8 @@ const bootstrap = async () => {
     forceExit.unref();
 
     agents.stop();
+    metrics.metricsService.stop();
+    await push.stop();
     await presence.presenceService.stop();
     await new Promise<void>((resolve) => io.close(() => resolve()));
     await sessionManager.disconnect();
