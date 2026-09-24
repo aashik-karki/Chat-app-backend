@@ -34,8 +34,12 @@ export type MessageCreatedListener = (event: {
  *
  * Server → client events: message:new, message:status, typing:update, conversation:updated
  */
+/** Runs before a staff member's message is saved; throw to block it (e.g. chat belongs to another agent). */
+export type StaffReplyGuard = (conversationId: string, staff: SocketUser) => Promise<void>;
+
 export class ChatGateway implements Gateway {
   private messageListeners: MessageCreatedListener[] = [];
+  private staffReplyGuard: StaffReplyGuard | null = null;
 
   constructor(
     private readonly io: AppServer,
@@ -43,9 +47,14 @@ export class ChatGateway implements Gateway {
     private readonly messages: MessagesService,
   ) {}
 
-  /** Lets the push-notification module react to new messages later. */
+  /** Lets other modules (agents, push notifications) react to new messages. */
   onMessageCreated(listener: MessageCreatedListener) {
     this.messageListeners.push(listener);
+  }
+
+  /** Set by the agents module: who on the staff side may reply in a thread. */
+  setStaffReplyGuard(guard: StaffReplyGuard) {
+    this.staffReplyGuard = guard;
   }
 
   onConnection(socket: AppSocket) {
@@ -92,6 +101,7 @@ export class ChatGateway implements Gateway {
         if (!hasPermission(user.role, side === 'customer' ? 'chat:send_own' : 'chat:reply')) {
           throw HttpError.forbidden('You cannot send messages in this conversation');
         }
+        if (side === 'staff' && this.staffReplyGuard) await this.staffReplyGuard(conversationId, user);
 
         const { message: saved, created } = await this.messages.create({
           conversationId,

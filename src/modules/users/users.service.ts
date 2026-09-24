@@ -67,4 +67,15 @@ export class UsersService {
     if (!user) throw HttpError.notFound('USER_NOT_FOUND', 'Approved non-admin user not found');
     return toPublicUser(user);
   }
+
+  async findPublicById(userId: string): Promise<PublicUser | null> {
+    const user = await User.findById(userId).select(PUBLIC_FIELDS).lean();
+    return user ? toPublicUser(user) : null;
+  }
+
+  /** Every approved support agent (used by the agents module). */
+  async listActiveAgents(): Promise<PublicUser[]> {
+    const users = await User.find({ role: 'agent', status: 'approved' }).select(PUBLIC_FIELDS).sort({ name: 1 }).lean();
+    return users.map(toPublicUser);
+  }
 }

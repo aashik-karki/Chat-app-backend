@@ -24,6 +24,14 @@ export interface ServerToClientEvents {
   'message:status': (payload: { conversationId: string; messageId: string; status: 'delivered' | 'read'; at: string }) => void;
   'typing:update': (payload: { conversationId: string; userId: string; name: string; isTyping: boolean }) => void;
   'presence:update': (payload: { userId: string; online: boolean; lastSeen: string | null }) => void;
+  'agent:status': (payload: import('../modules/agents/agents.mapper.js').AgentStatusResponse) => void;
+  'conversation:assigned': (payload: {
+    conversationId: string;
+    agentId: string | null;
+    agentName: string | null;
+    status: 'open' | 'closed';
+    reason: 'auto' | 'claim' | 'manual' | 'requeue' | 'closed';
+  }) => void;
   'conversation:updated': (payload: {
     conversationId: string;
     unreadCount: number;

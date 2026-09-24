@@ -1,11 +1,13 @@
 import { Schema } from 'mongoose';
-import { conversationStatuses, type ConversationDocument } from '../models/conversation.types.js';
+import { conversationStatuses, conversationTopics, type ConversationDocument } from '../models/conversation.types.js';
 
 export const conversationSchema = new Schema<ConversationDocument>(
   {
     customerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     assignedAgentId: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     status: { type: String, enum: conversationStatuses, required: true, default: 'open' },
+    topic: { type: String, enum: conversationTopics, required: true, default: 'general' },
+    assignedAt: { type: Date, default: null },
     lastMessageAt: { type: Date, default: null },
     lastMessagePreview: { type: String, default: null, maxlength: 200 },
   },

@@ -12,6 +12,7 @@ export interface AppRouters {
   auth: Router;
   users: Router;
   chat: Router;
+  agents: Router;
 }
 
 /** Like NestJS's AppModule: global middleware + every module's routes under /api/v1. */
@@ -40,6 +41,7 @@ export const createApp = (sessionMiddleware: RequestHandler, routers: AppRouters
   api.use('/auth', routers.auth);
   api.use('/admin/users', routers.users);
   api.use('/conversations', routers.chat);
+  api.use('/agents', routers.agents);
   app.use('/api/v1', api);
 
   app.use(notFoundHandler);

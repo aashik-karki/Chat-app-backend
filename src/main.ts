@@ -5,6 +5,7 @@ import { connectDatabase, disconnectDatabase } from './core/database/mongo.js';
 import { logger } from './core/logger.js';
 import { connectRedis, disconnectRedis } from './core/redis/redis.js';
 import { createSessionManager } from './core/session/session.js';
+import { createAgentsModule } from './modules/agents/agents.module.js';
 import { createAuthModule } from './modules/auth/auth.module.js';
 import { createChatModule } from './modules/chat/chat.module.js';
 import { createPresenceModule } from './modules/presence/presence.module.js';
@@ -22,16 +23,27 @@ const bootstrap = async () => {
   const users = createUsersModule();
   const chat = createChatModule();
   const presence = createPresenceModule();
+  const agents = createAgentsModule({
+    usersService: users.usersService,
+    conversationsService: chat.conversationsService,
+    presenceService: presence.presenceService,
+  });
 
   // 3. HTTP
-  const app = createApp(sessionManager.middleware, { auth: auth.router, users: users.router, chat: chat.router });
+  const app = createApp(sessionManager.middleware, {
+    auth: auth.router,
+    users: users.router,
+    chat: chat.router,
+    agents: agents.router,
+  });
   const httpServer = http.createServer(app);
 
   // 4. Realtime
   const io = await createSocketServer({ httpServer, sessionMiddleware: sessionManager.middleware });
   const chatGateway = chat.createGateway(io);
-  registerGateways(io, [presence.gateway, chatGateway]);
+  registerGateways(io, [presence.gateway, chatGateway, agents.gateway]);
   presence.presenceService.start(io);
+  agents.start(io, chatGateway);
 
   httpServer.listen(env.PORT, () => logger.info({ port: env.PORT }, 'Chat backend started'));
 
@@ -44,6 +56,7 @@ const bootstrap = async () => {
     const forceExit = setTimeout(() => process.exit(1), 10_000);
     forceExit.unref();
 
+    agents.stop();
     await presence.presenceService.stop();
     await new Promise<void>((resolve) => io.close(() => resolve()));
     await sessionManager.disconnect();

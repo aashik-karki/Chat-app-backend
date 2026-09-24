@@ -8,6 +8,8 @@ import type { MessagesController } from './controllers/messages.controller.js';
 import { conversationIdParamsDto } from './dto/conversation-id-params.dto.js';
 import { exportQueryDto } from './dto/export-query.dto.js';
 import { historyQueryDto } from './dto/history-query.dto.js';
+import { updateTopicDto } from './dto/update-topic.dto.js';
+import { requireCsrfToken } from '../../common/guards/csrf.guard.js';
 
 // Exports read a whole conversation, so keep them rare: 10 per user per 10 min.
 const exportLimiter = rateLimit({
@@ -24,6 +26,13 @@ export const createChatRouter = (conversations: ConversationsController, message
 
   router.get('/', conversations.list);
   router.get('/mine', requirePermission('chat:read_own'), conversations.mine);
+  router.patch(
+    '/mine/topic',
+    requireCsrfToken,
+    requirePermission('chat:send_own'),
+    validate({ body: updateTopicDto }),
+    conversations.setTopic,
+  );
   router.get('/:conversationId', validate({ params: conversationIdParamsDto }), conversations.getOne);
 
   router.get(
