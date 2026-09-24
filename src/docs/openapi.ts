@@ -9,6 +9,7 @@ import { conversationIdParamsDto } from '../modules/chat/dto/conversation-id-par
 import { exportQueryDto } from '../modules/chat/dto/export-query.dto.js';
 import { historyQueryDto } from '../modules/chat/dto/history-query.dto.js';
 import { updateTopicDto } from '../modules/chat/dto/update-topic.dto.js';
+import { analyticsQueryDto } from '../modules/metrics/dto/analytics-query.dto.js';
 import { createSubscriptionDto } from '../modules/push/dto/create-subscription.dto.js';
 import { deleteSubscriptionDto } from '../modules/push/dto/delete-subscription.dto.js';
 import { listUsersQueryDto } from '../modules/users/dto/list-users-query.dto.js';
@@ -179,5 +180,24 @@ export const buildOpenApiDocument = (): Json => ({
     },
 
     '/metrics/overview': { get: operation('get', { tag: 'Metrics', summary: 'Live metrics snapshot + messages per minute (last 60 min)', permission: 'metrics:view', description: 'Live updates: socket event `metrics:subscribe`, then `metrics:update` every 5s.' }) },
+    '/metrics/analytics': {
+      get: operation('get', {
+        tag: 'Metrics',
+        summary: 'Messages per day for a period and the one before it, messages per weekday, closed conversations',
+        permission: 'metrics:view',
+        description: 'Computed from MongoDB (covered index scan on messages.createdAt), days counted in `tz`. Cached in Redis for 60 seconds.',
+        query: analyticsQueryDto,
+        ok: {
+          description: 'Analytics',
+          example: {
+            range: { days: 7, timeZone: 'Asia/Kathmandu', from: '2026-09-18', to: '2026-09-24' },
+            messages: { total: 412, previousTotal: 380, daily: [{ date: '2026-09-18', messages: 51, previous: 47 }] },
+            byWeekday: [30, 71, 80, 64, 60, 58, 49],
+            conversations: { closed: 37, previousClosed: 31 },
+            generatedAt: '2026-09-24T09:00:00.000Z',
+          },
+        },
+      }),
+    },
   },
 });

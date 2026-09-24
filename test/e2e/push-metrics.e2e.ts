@@ -139,6 +139,13 @@ export const pushMetricsE2E = async () => {
     check('metrics: 60-point messages-per-minute series', overview.body?.messagesPerMinute?.length === 60, overview.body?.messagesPerMinute?.length);
     check('metrics REST forbidden for customers', (await api(customer, 'GET', '/metrics/overview')).status === 403);
 
+    const analytics = await api(admin, 'GET', '/metrics/analytics?days=7&tz=Asia/Kathmandu');
+    const daily = analytics.body?.messages?.daily ?? [];
+    check('analytics: 7 daily points, today has the 3 messages', analytics.status === 200 && daily.length === 7 && daily[6]?.messages === 3, analytics.body);
+    check('analytics: totals and weekday split add up', analytics.body?.messages.total === 3 && analytics.body?.byWeekday.reduce((a: number, b: number) => a + b, 0) === 3, analytics.body);
+    check('analytics: unknown time zone → 400', (await api(admin, 'GET', '/metrics/analytics?tz=Mars/Base')).status === 400);
+    check('analytics: forbidden for customers', (await api(customer, 'GET', '/metrics/analytics')).status === 403);
+
     const adminSocket = await connectSocket(admin);
     const sub = await emit(adminSocket, 'metrics:subscribe', {});
     check('admin metrics:subscribe → snapshot in ack', sub.ok && typeof sub.data.snapshot.activeUsers === 'number', sub);
