@@ -32,6 +32,7 @@ export interface ServerToClientEvents {
     status: 'open' | 'closed';
     reason: 'auto' | 'claim' | 'manual' | 'requeue' | 'closed';
   }) => void;
+  'metrics:update': (payload: import('../modules/metrics/metrics.service.js').MetricsUpdate) => void;
   'conversation:updated': (payload: {
     conversationId: string;
     unreadCount: number;
