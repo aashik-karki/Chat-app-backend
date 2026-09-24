@@ -1,7 +1,10 @@
 import { timingSafeEqual } from 'node:crypto';
 import type { Request, Response } from 'express';
 import { HttpError } from '../../common/errors/http-error.js';
+import { getQuery } from '../../common/middleware/validate.pipe.js';
 import { env } from '../../core/config/env.js';
+import type { AnalyticsService } from './analytics.service.js';
+import type { AnalyticsQueryDto } from './dto/analytics-query.dto.js';
 import type { MetricsService } from './metrics.service.js';
 
 const tokenMatches = (header: string | undefined): boolean => {
@@ -12,11 +15,19 @@ const tokenMatches = (header: string | undefined): boolean => {
 };
 
 export class MetricsController {
-  constructor(private readonly metrics: MetricsService) {}
+  constructor(
+    private readonly metrics: MetricsService,
+    private readonly analytics: AnalyticsService,
+  ) {}
 
   /** GET /api/v1/metrics/overview — admin dashboard (initial load; live updates come over the socket). */
   overview = async (_request: Request, response: Response) => {
     response.json(await this.metrics.update());
+  };
+
+  /** GET /api/v1/metrics/analytics?days=30&tz=Asia/Kathmandu — daily history for the dashboard charts. */
+  analyticsOverview = async (_request: Request, response: Response) => {
+    response.json(await this.analytics.get(getQuery<AnalyticsQueryDto>(response)));
   };
 
   /** GET /metrics — Prometheus scrape endpoint, protected by METRICS_TOKEN. */

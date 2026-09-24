@@ -18,5 +18,7 @@ export const messageSchema = new Schema<MessageDocument>(
 messageSchema.index({ conversationId: 1, createdAt: -1, _id: -1 });
 // Idempotent sends: a retried message with the same client id is not stored twice.
 messageSchema.index({ conversationId: 1, clientMessageId: 1 }, { unique: true });
+// Admin analytics: messages per day over a date range.
+messageSchema.index({ createdAt: -1 });
 // Unread counts and delivered/read updates: "messages in X not sent by me with status Y".
 messageSchema.index({ conversationId: 1, status: 1, senderId: 1 });

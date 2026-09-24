@@ -2,6 +2,7 @@ import { isRedisReady, redis } from '../../core/redis/redis.js';
 import type { AgentsService } from '../agents/services/agents.service.js';
 import type { ConversationsService } from '../chat/services/conversations.service.js';
 import type { PresenceService } from '../presence/presence.service.js';
+import { AnalyticsService } from './analytics.service.js';
 import { MetricsController } from './metrics.controller.js';
 import { MetricsGateway } from './metrics.gateway.js';
 import { createMetricsRouter } from './metrics.routes.js';
@@ -15,7 +16,7 @@ interface MetricsModuleDeps {
 
 export const createMetricsModule = ({ presenceService, agentsService, conversationsService }: MetricsModuleDeps) => {
   const metricsService = new MetricsService(isRedisReady() ? redis : null, presenceService, agentsService, conversationsService);
-  const controller = new MetricsController(metricsService);
+  const controller = new MetricsController(metricsService, new AnalyticsService(isRedisReady() ? redis : null));
   return {
     metricsService,
     router: createMetricsRouter(controller),
