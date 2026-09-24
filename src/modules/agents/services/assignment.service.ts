@@ -34,6 +34,8 @@ export class AssignmentService {
   private io: AppServer | null = null;
   private timer: NodeJS.Timeout | null = null;
   private draining = false;
+  /** Per-conversation lock (this server): rapid messages don't race to assign the same chat. */
+  private assigning = new Map<string, Promise<unknown>>();
 
   constructor(
     private readonly agents: AgentsService,
@@ -70,7 +72,19 @@ export class AssignmentService {
   }
 
   /** Tries to give an unassigned open conversation to the best available agent. */
-  async autoAssign(conversationId: string): Promise<'assigned' | 'no_agent' | 'skipped'> {
+  autoAssign(conversationId: string): Promise<'assigned' | 'no_agent' | 'skipped'> {
+    // Chain behind any assignment already running for this conversation on this server.
+    // (Across servers the atomic reserve + assignIfUnassigned below still decides the winner.)
+    const previous = this.assigning.get(conversationId) ?? Promise.resolve();
+    const run = previous.catch(() => undefined).then(() => this.assignNow(conversationId));
+    this.assigning.set(conversationId, run);
+    void run.finally(() => {
+      if (this.assigning.get(conversationId) === run) this.assigning.delete(conversationId);
+    });
+    return run;
+  }
+
+  private async assignNow(conversationId: string): Promise<'assigned' | 'no_agent' | 'skipped'> {
     const conversation = await this.conversations.findById(conversationId);
     if (!conversation || conversation.status !== 'open' || conversation.assignedAgentId) return 'skipped';
 

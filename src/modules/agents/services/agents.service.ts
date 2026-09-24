@@ -10,6 +10,7 @@ import type { UsersService } from '../../users/users.service.js';
 import { toAgentStatus, type AgentStatusResponse } from '../agents.mapper.js';
 import type { UpdateAgentSettingsDto } from '../dto/update-agent-settings.dto.js';
 import { AgentProfile } from '../models/agent-profile.model.js';
+import type { ConversationTopic } from '../../chat/models/conversation.types.js';
 import type { AgentAvailability, LeanAgentProfile } from '../models/agent-profile.types.js';
 
 export interface AgentCandidate {
@@ -18,6 +19,16 @@ export interface AgentCandidate {
 }
 
 const DEFAULT_MAX_CHATS = 5;
+
+/** Every field of a new profile (bulkWrite upserts do NOT apply schema defaults). */
+const profileDefaults = (agentId: string) => ({
+  userId: new Types.ObjectId(agentId),
+  availability: 'offline' as AgentAvailability,
+  skills: [] as ConversationTopic[],
+  maxConcurrentChats: DEFAULT_MAX_CHATS,
+  activeChats: 0,
+  lastAssignedAt: null,
+});
 
 /** Fills in any missing field (older documents, or stores that drop empty values), so callers never see undefined. */
 const normalizeProfile = (profile: Partial<LeanAgentProfile>): LeanAgentProfile => ({
@@ -80,8 +91,15 @@ export class AgentsService {
   }
 
   async setAvailability(agentId: string, availability: AgentAvailability): Promise<AgentStatusResponse> {
-    await this.ensureProfiles([agentId]);
-    await AgentProfile.updateOne({ userId: agentId }, { $set: { availability } });
+    // One atomic upsert (not "create profile, then update") so it can't interleave
+    // with another request that is creating the same profile at the same moment.
+    const { availability: _ignored, ...defaults } = profileDefaults(agentId);
+    await AgentProfile.updateOne({ userId: agentId }, { $set: { availability }, $setOnInsert: defaults }, { upsert: true }).catch(
+      async (error: unknown) => {
+        if (!isOnlyDuplicateKeyErrors(error)) throw error;
+        await AgentProfile.updateOne({ userId: agentId }, { $set: { availability } }); // lost the insert race: plain update
+      },
+    );
     const status = await this.broadcastStatus(agentId);
     this.notify(agentId, status.status);
     return status;
@@ -144,17 +162,7 @@ export class AgentsService {
         agentIds.map((id) => ({
           updateOne: {
             filter: { userId: new Types.ObjectId(id) },
-            // bulkWrite upserts do NOT apply schema defaults, so every field is set explicitly.
-            update: {
-              $setOnInsert: {
-                userId: new Types.ObjectId(id),
-                availability: 'offline',
-                skills: [],
-                maxConcurrentChats: DEFAULT_MAX_CHATS,
-                activeChats: 0,
-                lastAssignedAt: null,
-              },
-            },
+            update: { $setOnInsert: profileDefaults(id) },
             upsert: true,
           },
         })),

@@ -1,7 +1,7 @@
 import http from 'node:http';
 import { createApp } from './app.js';
 import { env } from './core/config/env.js';
-import { connectDatabase, disconnectDatabase } from './core/database/mongo.js';
+import { connectDatabase, disconnectDatabase, ensureIndexes } from './core/database/mongo.js';
 import { logger } from './core/logger.js';
 import { connectRedis, disconnectRedis } from './core/redis/redis.js';
 import { createSessionManager } from './core/session/session.js';
@@ -14,6 +14,8 @@ import { createPushModule } from './modules/push/push.module.js';
 import { createUsersModule } from './modules/users/users.module.js';
 import { createSocketServer, registerGateways } from './realtime/socket.server.js';
 
+import mongooseDebug from 'mongoose';
+if (process.env.MONGOOSE_DEBUG) mongooseDebug.set('debug', (c: string, m: string, ...a: unknown[]) => { if (c === 'agentprofiles') console.error('DBG', c, m, JSON.stringify(a).slice(0, 260)); });
 const bootstrap = async () => {
   // 1. Infrastructure
   await connectDatabase();
@@ -39,6 +41,9 @@ const bootstrap = async () => {
     conversationsService: chat.conversationsService,
     metricsService: metrics.metricsService,
   });
+
+  // Unique indexes must exist before the first request (see ensureIndexes).
+  await ensureIndexes();
 
   // 3. HTTP
   const app = createApp(sessionManager.middleware, {
