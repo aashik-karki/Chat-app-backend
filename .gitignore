@@ -1,6 +1,7 @@
 node_modules/
 dist/
-docs/
+/docs/*
+!/docs/realtime-events.md
 .env
 .env.*
 !.env.example
