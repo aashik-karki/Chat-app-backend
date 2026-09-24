@@ -3,6 +3,7 @@ import { HttpError } from '../../../common/errors/http-error.js';
 import { isDuplicateKeyError } from '../../../common/utils/mongo-errors.js';
 import { decodeCursor, encodeCursor } from '../../../common/utils/pagination.js';
 import { toMessageResponse, type MessageResponse } from '../chat.mapper.js';
+import { otherSide, sentBy, type ChatSide, type ConversationRef } from '../chat-side.js';
 import { Message } from '../models/message.model.js';
 import type { LeanMessage } from '../models/message.types.js';
 import type { ConversationsService } from './conversations.service.js';
@@ -95,45 +96,51 @@ export class MessagesService {
     const message = await Message.findOneAndUpdate(
       { _id: messageId, status: 'sent' },
       { $set: { status: 'delivered', deliveredAt: new Date() } },
-      { new: true },
+      { returnDocument: 'after' },
     ).lean<LeanMessage>();
     if (message) await this.cache.invalidate(message.conversationId.toString());
     return message ? toMessageResponse(message) : null;
   }
 
   /**
-   * Everything the other side sent that `recipientId` hasn't received yet →
+   * Everything the OTHER side sent that `recipientSide` hasn't received yet →
    * delivered. The `status: 'sent'` condition is inside the update itself, so
    * a message that became `read` in between is never pushed back to
    * `delivered`. Returns exactly the messages this call changed.
    */
-  async markDeliveredForRecipient(conversationId: string, recipientId: string): Promise<MessageResponse[]> {
-    const filter = { conversationId, senderId: { $ne: recipientId }, status: 'sent' as const };
+  async markDeliveredTo(conversation: ConversationRef, recipientSide: ChatSide): Promise<MessageResponse[]> {
+    const filter = {
+      conversationId: conversation.id,
+      senderId: sentBy(otherSide(recipientSide), conversation.customerId),
+      status: 'sent' as const,
+    };
     const deliveredAt = new Date();
 
     const result = await Message.updateMany(filter, { $set: { status: 'delivered', deliveredAt } });
     if (result.modifiedCount === 0) return [];
 
-    await this.cache.invalidate(conversationId);
+    await this.cache.invalidate(conversation.id);
     // Our own deliveredAt stamp identifies exactly the rows this call updated.
-    const changed = await Message.find({ conversationId, status: 'delivered', deliveredAt }).lean<LeanMessage[]>();
+    const changed = await Message.find({ conversationId: conversation.id, status: 'delivered', deliveredAt }).lean<LeanMessage[]>();
     return changed.map(toMessageResponse);
   }
 
   /**
-   * Marks every unread message from the other side, up to and including
-   * `throughMessageId`, as read. The status change is ONE atomic updateMany
-   * with `status: { $ne: 'read' }` in the filter, so two tabs reading at the
-   * same time can't conflict and nothing is counted twice.
+   * `readerSide` has seen everything up to and including `throughMessageId`:
+   * marks the OTHER side's unread messages in that range as read. The status
+   * change is ONE atomic updateMany with `status: { $ne: 'read' }` in the
+   * filter, so two tabs reading at once can't conflict or double count.
    */
-  async markRead(conversationId: string, readerId: string, throughMessageId: string): Promise<ReadResult | null> {
-    const through = await Message.findOne({ _id: throughMessageId, conversationId }).select('createdAt').lean<LeanMessage>();
+  async markRead(conversation: ConversationRef, readerSide: ChatSide, throughMessageId: string): Promise<ReadResult | null> {
+    const through = await Message.findOne({ _id: throughMessageId, conversationId: conversation.id })
+      .select('createdAt')
+      .lean<LeanMessage>();
     if (!through) return null;
 
     const readAt = new Date();
     const range = {
-      conversationId,
-      senderId: { $ne: new Types.ObjectId(readerId) },
+      conversationId: conversation.id,
+      senderId: sentBy(otherSide(readerSide), conversation.customerId),
       createdAt: { $lte: through.createdAt },
     };
 
@@ -142,24 +149,28 @@ export class MessagesService {
     await Message.updateMany({ ...range, status: 'sent' }, { $set: { deliveredAt: readAt } });
     const result = await Message.updateMany({ ...range, status: { $ne: 'read' } }, { $set: { status: 'read', readAt } });
 
-    if (result.modifiedCount > 0) await this.cache.invalidate(conversationId);
+    if (result.modifiedCount > 0) await this.cache.invalidate(conversation.id);
     return { readAt: readAt.toISOString(), updatedCount: result.modifiedCount };
   }
 
-  /** Unread badge per conversation: messages from the other side not yet read by `readerId`. */
-  async getUnreadCounts(conversationIds: string[], readerId: string): Promise<Record<string, number>> {
-    if (conversationIds.length === 0) return {};
+  /** Unread badge per conversation, for one side: messages from the other side not yet read. */
+  async getUnreadCounts(conversations: ConversationRef[], viewerSide: ChatSide): Promise<Record<string, number>> {
+    if (conversations.length === 0) return {};
     const rows = await Message.aggregate<{ _id: Types.ObjectId; count: number }>([
       {
         $match: {
-          conversationId: { $in: conversationIds.map((id) => new Types.ObjectId(id)) },
           status: { $ne: 'read' },
-          senderId: { $ne: new Types.ObjectId(readerId) },
+          $or: conversations.map((conversation) => ({
+            conversationId: new Types.ObjectId(conversation.id),
+            senderId: sentBy(otherSide(viewerSide), conversation.customerId),
+          })),
         },
       },
       { $group: { _id: '$conversationId', count: { $sum: 1 } } },
     ]);
-    return Object.fromEntries(rows.map((row) => [row._id.toString(), row.count]));
+    const counts = Object.fromEntries(conversations.map((conversation) => [conversation.id, 0]));
+    for (const row of rows) counts[row._id.toString()] = row.count;
+    return counts;
   }
 
   /**

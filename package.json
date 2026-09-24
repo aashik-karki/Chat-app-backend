@@ -2,13 +2,13 @@
   "name": "chat-backend",
   "version": "1.0.0",
   "description": "Scalable real-time chat backend",
-  "main": "dist/server.js",
+  "main": "dist/main.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "dev": "tsx watch src/server.ts",
-    "start": "node dist/server.js",
+    "dev": "tsx watch src/main.ts",
+    "start": "node dist/main.js",
     "seed:admin": "tsx src/scripts/seed-admin.ts",
-    "test": "vitest run",
+    "test": "vitest run --dir src",
     "lint": "eslint .",
     "format": "prettier --write ."
   },
@@ -16,7 +16,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@socket.io/redis-adapter": "^8.3.0",
+    "@socket.io/redis-streams-adapter": "^0.3.1",
     "bcryptjs": "^3.0.3",
     "bullmq": "^6.3.8",
     "connect-redis": "^10.0.0",
