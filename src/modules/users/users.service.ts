@@ -78,4 +78,12 @@ export class UsersService {
     const users = await User.find({ role: 'agent', status: 'approved' }).select(PUBLIC_FIELDS).sort({ name: 1 }).lean();
     return users.map(toPublicUser);
   }
+
+  /** id → name for a set of users (e.g. to show which agent handles a chat). */
+  async namesByIds(userIds: string[]): Promise<Record<string, string>> {
+    const unique = [...new Set(userIds.filter(Boolean))];
+    if (unique.length === 0) return {};
+    const users = await User.find({ _id: { $in: unique } }).select('name').lean();
+    return Object.fromEntries(users.map((user) => [user._id.toString(), user.name]));
+  }
 }

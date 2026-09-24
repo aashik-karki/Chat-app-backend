@@ -35,6 +35,8 @@ export interface ConversationResponse {
   id: string;
   customer: CustomerSummary;
   assignedAgentId: string | null;
+  /** Name of the agent handling this chat (null while waiting in the queue). */
+  assignedAgent: { id: string; name: string } | null;
   status: LeanConversation['status'];
   topic: LeanConversation['topic'];
   lastMessagePreview: string | null;
@@ -46,10 +48,14 @@ export const toConversationResponse = (
   conversation: LeanConversation,
   customer: CustomerSummary,
   unreadCount: number,
+  agentNames: Record<string, string> = {},
 ): ConversationResponse => ({
   id: conversation._id.toString(),
   customer,
   assignedAgentId: conversation.assignedAgentId ? conversation.assignedAgentId.toString() : null,
+  assignedAgent: conversation.assignedAgentId
+    ? { id: conversation.assignedAgentId.toString(), name: agentNames[conversation.assignedAgentId.toString()] ?? 'Support agent' }
+    : null,
   // `?? default` keeps threads created before these fields existed working.
   status: conversation.status ?? 'open',
   topic: conversation.topic ?? 'general',

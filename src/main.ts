@@ -23,7 +23,7 @@ const bootstrap = async () => {
   // 2. Modules (services + routers), like NestJS's module tree
   const auth = createAuthModule();
   const users = createUsersModule();
-  const chat = createChatModule();
+  const chat = createChatModule({ usersService: users.usersService });
   const presence = createPresenceModule();
   const agents = createAgentsModule({
     usersService: users.usersService,
