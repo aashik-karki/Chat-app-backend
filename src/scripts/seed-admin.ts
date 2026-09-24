@@ -1,15 +1,14 @@
 import bcrypt from 'bcryptjs';
-import mongoose from 'mongoose';
-import { connectDatabase, disconnectDatabase } from '../config/database.js';
-import { env } from '../config/env.js';
-import { logger } from '../lib/logger.js';
-import { User } from '../models/user.js';
+import { env } from '../core/config/env.js';
+import { connectDatabase, disconnectDatabase, isDatabaseReady } from '../core/database/mongo.js';
+import { logger } from '../core/logger.js';
+import { User } from '../modules/users/models/user.model.js';
 
 const seedAdmin = async () => {
   if (!env.ADMIN_EMAIL || !env.ADMIN_PASSWORD) {
     throw new Error('ADMIN_EMAIL and ADMIN_PASSWORD must be set before seeding an admin');
   }
-  if (!(await connectDatabase()) || mongoose.connection.readyState !== mongoose.ConnectionStates.connected) {
+  if (!(await connectDatabase()) || !isDatabaseReady()) {
     throw new Error('MongoDB connection is required to seed an admin');
   }
 
@@ -22,13 +21,7 @@ const seedAdmin = async () => {
   }
 
   const passwordHash = await bcrypt.hash(env.ADMIN_PASSWORD, 12);
-  await User.create({
-    name: 'Administrator',
-    email,
-    passwordHash,
-    role: 'admin',
-    status: 'approved',
-  });
+  await User.create({ name: 'Administrator', email, passwordHash, role: 'admin', status: 'approved' });
   logger.info({ email }, 'Admin user created');
 };
 

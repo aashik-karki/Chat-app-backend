@@ -5,6 +5,7 @@ import { HttpError } from '../../../common/errors/http-error.js';
 import { isDuplicateKeyError } from '../../../common/utils/mongo-errors.js';
 import { Conversation } from '../models/conversation.model.js';
 import type { LeanConversation } from '../models/conversation.types.js';
+import type { ConversationRef } from '../chat-side.js';
 
 type Requester = Pick<CurrentUser, 'id' | 'role'>;
 
@@ -13,6 +14,11 @@ const PREVIEW_LENGTH = 200;
 export interface ConversationWithCustomer extends Omit<LeanConversation, 'customerId'> {
   customerId: { _id: Types.ObjectId; name: string; email: string } | null;
 }
+
+export const toConversationRef = (conversation: Pick<LeanConversation, '_id' | 'customerId'>): ConversationRef => ({
+  id: conversation._id.toString(),
+  customerId: conversation.customerId.toString(),
+});
 
 export class ConversationsService {
   /** Staff (chat:read_any) may open any thread; a customer only their own. */

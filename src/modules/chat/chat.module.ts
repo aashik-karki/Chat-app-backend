@@ -1,4 +1,6 @@
 import { isRedisReady, redis } from '../../core/redis/redis.js';
+import type { AppServer } from '../../realtime/socket.types.js';
+import { ChatGateway } from './chat.gateway.js';
 import { createChatRouter } from './chat.routes.js';
 import { ConversationsController } from './controllers/conversations.controller.js';
 import { MessagesController } from './controllers/messages.controller.js';
@@ -11,8 +13,7 @@ import { MessagesService } from './services/messages.service.js';
  * Like a NestJS ChatModule. Conversations and messages live in one module
  * because they depend on each other (messages need conversation access
  * checks; the conversation list needs unread counts from messages).
- * The services are returned so the socket gateway (next step) and the
- * agents module can reuse them.
+ * The services are returned so other modules (agents, push) can reuse them.
  */
 export const createChatModule = () => {
   const conversationsService = new ConversationsService();
@@ -27,5 +28,7 @@ export const createChatModule = () => {
     conversationsService,
     messagesService,
     router: createChatRouter(conversationsController, messagesController),
+    /** Created once the Socket.IO server exists (see main.ts). */
+    createGateway: (io: AppServer) => new ChatGateway(io, conversationsService, messagesService),
   };
 };

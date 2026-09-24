@@ -45,7 +45,7 @@ export class UsersService {
     const user = await User.findOneAndUpdate(
       { _id: userId, role: 'user', status: 'pending' },
       { $set: { status } },
-      { new: true },
+      { returnDocument: 'after' },
     )
       .select(PUBLIC_FIELDS)
       .lean();
@@ -60,7 +60,7 @@ export class UsersService {
     const user = await User.findOneAndUpdate(
       { _id: userId, role: { $ne: 'admin' }, status: 'approved' },
       { $set: { role } },
-      { new: true },
+      { returnDocument: 'after' },
     )
       .select(PUBLIC_FIELDS)
       .lean();
