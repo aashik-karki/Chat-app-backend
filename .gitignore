@@ -7,3 +7,4 @@ docs/
 coverage/
 *.log
 .DS_Store
+.step2-backup/
